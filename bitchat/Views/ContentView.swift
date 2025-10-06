@@ -311,10 +311,10 @@ struct ContentView: View {
                                 // Regular messages with natural text wrapping
                                 VStack(alignment: .leading, spacing: 0) {
                                     // Precompute heavy token scans once per row
-                                    let cashuTokens = message.content.extractCashuTokens()
+                                    let cashuLinks = message.content.extractCashuLinks()
                                     let lightningLinks = message.content.extractLightningLinks()
                                     HStack(alignment: .top, spacing: 0) {
-                                        let isLong = (message.content.count > TransportConfig.uiLongMessageLengthThreshold || message.content.hasVeryLongToken(threshold: TransportConfig.uiVeryLongTokenThreshold)) && cashuTokens.isEmpty
+                                        let isLong = (message.content.count > TransportConfig.uiLongMessageLengthThreshold || message.content.hasVeryLongToken(threshold: TransportConfig.uiVeryLongTokenThreshold)) && cashuLinks.isEmpty
                                         let isExpanded = expandedMessageIDs.contains(message.id)
                                         Text(viewModel.formatMessageAsText(message, colorScheme: colorScheme))
                                             .fixedSize(horizontal: false, vertical: true)
@@ -330,7 +330,7 @@ struct ContentView: View {
                                     }
                                     
                                     // Expand/Collapse for very long messages
-                                    if (message.content.count > TransportConfig.uiLongMessageLengthThreshold || message.content.hasVeryLongToken(threshold: TransportConfig.uiVeryLongTokenThreshold)) && cashuTokens.isEmpty {
+                                    if (message.content.count > TransportConfig.uiLongMessageLengthThreshold || message.content.hasVeryLongToken(threshold: TransportConfig.uiVeryLongTokenThreshold)) && cashuLinks.isEmpty {
                                         let isExpanded = expandedMessageIDs.contains(message.id)
                                         let labelKey = isExpanded ? LocalizedStringKey("content.message.show_less") : LocalizedStringKey("content.message.show_more")
                                         Button(labelKey) {
@@ -343,37 +343,13 @@ struct ContentView: View {
                                     }
 
                                     // Render payment chips (Lightning / Cashu) with rounded background
-                                    if !lightningLinks.isEmpty || !cashuTokens.isEmpty {
+                                    if !lightningLinks.isEmpty || !cashuLinks.isEmpty {
                                         HStack(spacing: 8) {
-                                            ForEach(Array(lightningLinks.prefix(3)).indices, id: \.self) { i in
-                                                let link = lightningLinks[i]
-                                                PaymentChipView(
-                                                    emoji: "⚡",
-                                                    label: String(localized: "content.payment.lightning", comment: "Label for Lightning payment chip"),
-                                                    colorScheme: colorScheme
-                                                ) {
-                                                    #if os(iOS)
-                                                    if let url = URL(string: link) { UIApplication.shared.open(url) }
-                                                    #else
-                                                    if let url = URL(string: link) { NSWorkspace.shared.open(url) }
-                                                    #endif
-                                                }
+                                            ForEach(lightningLinks, id: \.self) { link in
+                                                PaymentChipView(paymentType: .lightning(link))
                                             }
-                                            ForEach(Array(cashuTokens.prefix(3)).indices, id: \.self) { i in
-                                                let token = cashuTokens[i]
-                                                let enc = token.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(CharacterSet(charactersIn: "-_"))) ?? token
-                                                let urlStr = "cashu:\(enc)"
-                                                PaymentChipView(
-                                                    emoji: "🥜",
-                                                    label: String(localized: "content.payment.cashu", comment: "Label for Cashu payment chip"),
-                                                    colorScheme: colorScheme
-                                                ) {
-                                                    #if os(iOS)
-                                                    if let url = URL(string: urlStr) { UIApplication.shared.open(url) }
-                                                    #else
-                                                    if let url = URL(string: urlStr) { NSWorkspace.shared.open(url) }
-                                                    #endif
-                                                }
+                                            ForEach(cashuLinks, id: \.self) { link in
+                                                PaymentChipView(paymentType: .cashu(link))
                                             }
                                         }
                                         .padding(.top, 6)
@@ -1618,45 +1594,5 @@ extension ContentView {
         case .location:
             LocationNotesCounter.shared.cancel()
         }
-    }
-}
-
-// MARK: - Helper Views
-
-// Rounded payment chip button
-private struct PaymentChipView: View {
-    let emoji: String
-    let label: String
-    let colorScheme: ColorScheme
-    let action: () -> Void
-    
-    private var fgColor: Color {
-        colorScheme == .dark ? Color.green : Color(red: 0, green: 0.5, blue: 0)
-    }
-    private var bgColor: Color {
-        colorScheme == .dark ? Color.gray.opacity(0.18) : Color.gray.opacity(0.12)
-    }
-    private var border: Color { fgColor.opacity(0.25) }
-    
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Text(emoji)
-                Text(label)
-                    .font(.bitchatSystem(size: 12, weight: .semibold, design: .monospaced))
-            }
-            .padding(.vertical, 6)
-            .padding(.horizontal, 12)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(bgColor)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(border, lineWidth: 1)
-            )
-            .foregroundColor(fgColor)
-        }
-        .buttonStyle(.plain)
     }
 }
