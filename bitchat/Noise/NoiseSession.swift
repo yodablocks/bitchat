@@ -103,7 +103,7 @@ class NoiseSession {
             // Check if handshake is complete
             if handshake.isHandshakeComplete() {
                 // Get transport ciphers
-                let (send, receive) = try handshake.getTransportCiphers()
+                let (send, receive) = try handshake.getTransportCiphers(useExtractedNonce: true)
                 sendCipher = send
                 receiveCipher = receive
                 
@@ -129,7 +129,7 @@ class NoiseSession {
                 // Check if handshake is complete after writing
                 if handshake.isHandshakeComplete() {
                     // Get transport ciphers
-                    let (send, receive) = try handshake.getTransportCiphers()
+                    let (send, receive) = try handshake.getTransportCiphers(useExtractedNonce: true)
                     sendCipher = send
                     receiveCipher = receive
                     
@@ -193,12 +193,6 @@ class NoiseSession {
     func getRemoteStaticPublicKey() -> Curve25519.KeyAgreement.PublicKey? {
         return sessionQueue.sync {
             return remoteStaticPublicKey
-        }
-    }
-    
-    func getHandshakeHash() -> Data? {
-        return sessionQueue.sync {
-            return handshakeHash
         }
     }
     

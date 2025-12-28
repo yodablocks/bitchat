@@ -26,11 +26,15 @@ struct BitchatApp: App {
     @NSApplicationDelegateAdaptor(MacAppDelegate.self) var appDelegate
     #endif
     
+    private let idBridge = NostrIdentityBridge()
+    
     init() {
         let keychain = KeychainManager()
+        let idBridge = self.idBridge
         _chatViewModel = StateObject(
             wrappedValue: ChatViewModel(
                 keychain: keychain,
+                idBridge: idBridge,
                 identityManager: SecureIdentityStateManager(keychain)
             )
         )
@@ -49,15 +53,14 @@ struct BitchatApp: App {
                     // Inject live Noise service into VerificationService to avoid creating new BLE instances
                     VerificationService.shared.configure(with: chatViewModel.meshService.getNoiseService())
                     // Prewarm Nostr identity and QR to make first VERIFY sheet fast
+                    let nickname = chatViewModel.nickname
                     DispatchQueue.global(qos: .utility).async {
-                        let npub = try? NostrIdentityBridge.getCurrentNostrIdentity()?.npub
-                        _ = VerificationService.shared.buildMyQRString(nickname: chatViewModel.nickname, npub: npub)
+                        let npub = try? idBridge.getCurrentNostrIdentity()?.npub
+                        _ = VerificationService.shared.buildMyQRString(nickname: nickname, npub: npub)
                     }
-                    #if os(iOS)
+
                     appDelegate.chatViewModel = chatViewModel
-                    #elseif os(macOS)
-                    appDelegate.chatViewModel = chatViewModel
-                    #endif
+
                     // Initialize network activation policy; will start Tor/Nostr only when allowed
                     NetworkActivationService.shared.start()
                     // Check for shared content
@@ -185,6 +188,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
         return true
     }
+    
+    func applicationWillTerminate(_ application: UIApplication) {
+        chatViewModel?.applicationWillTerminate()
+    }
 }
 #endif
 
@@ -217,7 +224,7 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
             // Get peer ID from userInfo
             if let peerID = userInfo["peerID"] as? String {
                 DispatchQueue.main.async {
-                    self.chatViewModel?.startPrivateChat(with: peerID)
+                    self.chatViewModel?.startPrivateChat(with: PeerID(str: peerID))
                 }
             }
         }
@@ -242,10 +249,15 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
             // Get peer ID from userInfo
             if let peerID = userInfo["peerID"] as? String {
                 // Don't show notification if the private chat is already open
-                if chatViewModel?.selectedPrivateChatPeer == peerID {
-                    completionHandler([])
-                    return
+                // Access main-actor-isolated property via Task
+                Task { @MainActor in
+                    if self.chatViewModel?.selectedPrivateChatPeer == PeerID(str: peerID) {
+                        completionHandler([])
+                    } else {
+                        completionHandler([.banner, .sound])
+                    }
                 }
+                return
             }
         }
         // Suppress geohash activity notification if we're already in that geohash channel
